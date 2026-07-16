@@ -117,3 +117,5 @@ The pipeline is pre-configured via `.github/workflows/deploy-pages.yml`. When yo
 
 > [!NOTE]
 > Make sure to configure the secrets `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in your GitHub repository setting secrets panel (`Settings` -> `Secrets and variables` -> `Actions`) for automated builds.
+
+ 
