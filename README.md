@@ -1,10 +1,17 @@
 # Spredsheep Scheduler 📅⏰
 
-Spredsheep is a sleek, polished, and production-ready **Employee Scheduling Progressive Web Application (PWA)** built for small, hourly teams. It features a robust Supabase backend, real-time schedule publishers, employee-facing dashboards, legal shift acknowledgments, and automated deployment configurations.
+Spredsheep is a sleek, polished, and production-ready **Employee Scheduling Progressive Web Application (PWA)** for any company with hourly teams. An admin sets up departments and managers; managers schedule their departments; employees see their shifts, set availability, and request time off. Built on a Supabase backend with department-scoped Row Level Security.
+
+**Roles:** the first account to sign up becomes the **admin**. Admins create **managers** (each can run one or more departments) and **employees** (each belongs to one department).
 
 ---
 
 ## 🚀 Key Product Features
+
+### 0. Admin Console
+* **Departments**: Create, deactivate, or delete departments — each with its own schedules and staff.
+* **Staff Management**: Create manager and employee accounts, assign managers to any set of departments, move employees between departments, deactivate or delete accounts.
+* **App Settings**: Organization name (shown across the app) and the weekly hours cap enforced by scheduling validation.
 
 ### 1. Manager Control Panel
 * **Weekly Scheduler Grid**: Visual weekly grid allowing managers to assign, edit, and delete shifts.
@@ -19,6 +26,7 @@ Spredsheep is a sleek, polished, and production-ready **Employee Scheduling Prog
 * **Personal Shifts**: View personal shifts for the active published week.
 * **Team Viewer**: Safe directory of scheduled shifts across the team (masking emails and contact info).
 * **Availability Preferences**: Define daily working hours and toggle available/unavailable days.
+* **Time Off Requests**: Request days off with an optional reason; track pending/approved/denied status; cancel pending requests. Managers review requests and keep the final say — scheduling over approved time off raises a warning, not a block.
 * **Schedule Acknowledgment**: Electronically sign off to acknowledge new schedules.
 
 ---
@@ -39,12 +47,16 @@ Spredsheep is a sleek, polished, and production-ready **Employee Scheduling Prog
 ├── supabase/
 │   ├── migrations/
 │   │   ├── 20260716000000_init_schema.sql # Database schema, triggers & RPCs
-│   │   └── 20260717000000_fix_rpc_rls_and_overnight.sql # RPC/RLS fixes, overnight shifts
+│   │   ├── 20260717000000_fix_rpc_rls_and_overnight.sql # RPC/RLS fixes, overnight shifts
+│   │   ├── 20260717000001_harden_function_grants.sql # Function grant hardening
+│   │   ├── 20260717000002_delete_employee_rpc.sql # Staff deletion RPC
+│   │   └── 20260718000000_departments_admin_timeoff.sql # Admin role, departments, time off, settings
 │   └── seed.sql                           # Seed database records
 ├── src/
 │   ├── features/
 │   │   ├── auth/         # Login, Password Reset, Auth Context, Route Guards
-│   │   ├── manager/      # Scheduler, Invites, Stats, Manager tabs
+│   │   ├── admin/        # Admin console: departments, staff, app settings
+│   │   ├── manager/      # Scheduler, Invites, Time off review, Manager tabs
 │   │   └── employee/     # Welcome card, Shift viewer, Availabilities, bottom-nav
 │   ├── lib/              # Supabase Client configuration
 │   ├── utils/            # Scheduling validation rules & date arithmetic
@@ -61,11 +73,15 @@ All access is restricted using **Row Level Security (RLS)** in PostgreSQL.
 
 | Table Name | Description | RLS Policy Summary |
 | :--- | :--- | :--- |
-| `profiles` | User accounts containing `full_name`, `role`, and `active` status. | Authenticated users can read active profiles and their own. Users can update their own profile (a trigger blocks non-managers from changing `role`/`active`). Managers can edit all. |
-| `employee_availability` | Employee weekly hour preferences per day (0-6). | Employees can read and edit their own. Managers can read all. |
-| `schedule_weeks` | Schedule bounds (`week_start`) and state (`draft` vs `published`). | Employees can read only published weeks. Managers can read/write all. |
-| `shifts` | Daily scheduled work shifts. | Employees can read published shifts. Managers can write/edit all. |
-| `schedule_acknowledgments` | Logged confirmations of weekly published schedules. | Users can insert/read their own. Managers can read all. |
+| `app_settings` | Singleton: `org_name`, `weekly_hours_cap`. | Anyone signed in can read; only admins can update. |
+| `departments` | Departments, each with its own schedules and staff. | Anyone signed in can read; only admins can manage. |
+| `profiles` | User accounts: `full_name`, `role` (`admin`/`manager`/`employee`), `active`, `department_id`. | Users read their own profile plus active department-mates; managers read staff of departments they manage; admins read all. A trigger blocks non-managers from changing `role`/`active`/`department_id`, and only admins may touch the admin role. |
+| `manager_departments` | Which departments each manager runs (many-to-many). | Managers read their own assignments; admins manage all. |
+| `employee_availability` | Employee weekly hour preferences per day (0-6). | Employees read/edit their own; managers of their department (and admins) can too. |
+| `schedule_weeks` | Per-department schedule bounds (`week_start`) and state (`draft` vs `published`). | Employees read published weeks of their department. Managers manage weeks of departments they manage. |
+| `shifts` | Daily scheduled work shifts. | Employees read published shifts of their department. Managers manage shifts of their departments. |
+| `schedule_acknowledgments` | Logged confirmations of weekly published schedules. | Users insert/read their own. Managers read their departments'. |
+| `time_off_requests` | Employee time-off requests with `pending`/`approved`/`denied` status. | Employees create/read/cancel their own pending requests. Managers of the employee's department review (approve/deny). |
 
 ---
 

@@ -39,21 +39,23 @@ export const UnauthenticatedRoute: React.FC<RouteProps> = ({ children }) => {
   }
 
   if (session && profile) {
-    if (profile.role === 'manager') {
-      return <Navigate to="/manager" replace />;
-    } else {
-      return <Navigate to="/employee" replace />;
-    }
+    return <Navigate to={homeRouteForRole(profile.role)} replace />;
   }
 
   return <>{children}</>;
 };
 
+export const homeRouteForRole = (role: string | undefined): string => {
+  if (role === 'admin') return '/admin';
+  if (role === 'manager') return '/manager';
+  return '/employee';
+};
+
 interface RoleRouteProps extends RouteProps {
-  allowedRole: 'manager' | 'employee';
+  allowedRoles: Array<'admin' | 'manager' | 'employee'>;
 }
 
-export const RoleProtectedRoute: React.FC<RoleRouteProps> = ({ children, allowedRole }) => {
+export const RoleProtectedRoute: React.FC<RoleRouteProps> = ({ children, allowedRoles }) => {
   const { session, profile, loading, signOut } = useAuth();
 
   if (loading) {
@@ -94,10 +96,9 @@ export const RoleProtectedRoute: React.FC<RoleRouteProps> = ({ children, allowed
     );
   }
 
-  if (profile.role !== allowedRole) {
+  if (!allowedRoles.includes(profile.role)) {
     // If wrong role, send them back to their appropriate home
-    const fallbackRoute = profile.role === 'manager' ? '/manager' : '/employee';
-    return <Navigate to={fallbackRoute} replace />;
+    return <Navigate to={homeRouteForRole(profile.role)} replace />;
   }
 
   return <>{children}</>;

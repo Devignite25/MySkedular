@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../auth/AuthContext';
 import {
@@ -16,7 +17,7 @@ import {
   getWeekDays,
   DAY_NAMES
 } from '../../utils/dateUtils';
-import type { Profile, EmployeeAvailability, ScheduleWeek, Shift, ScheduleAcknowledgment } from '../../types';
+import type { Profile, EmployeeAvailability, ScheduleWeek, Shift, ScheduleAcknowledgment, Department, TimeOffRequest } from '../../types';
 import {
   Calendar,
   Users,
@@ -37,14 +38,22 @@ import {
   Mail,
   User,
   Shield,
-  WifiOff
+  WifiOff,
+  Building2,
+  CalendarOff
 } from 'lucide-react';
 
 export const ManagerDashboard: React.FC = () => {
   const { signOut, profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'scheduler' | 'employees' | 'acknowledgments'>('overview');
-  
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState<'overview' | 'scheduler' | 'employees' | 'timeoff' | 'acknowledgments'>('overview');
+
   // Data State
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
+  const [timeOffRequests, setTimeOffRequests] = useState<TimeOffRequest[]>([]);
+  const [orgName, setOrgName] = useState('Spredsheep');
+  const [hoursCap, setHoursCap] = useState(39);
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [availabilities, setAvailabilities] = useState<EmployeeAvailability[]>([]);
   const [weeks, setWeeks] = useState<ScheduleWeek[]>([]);
@@ -71,7 +80,7 @@ export const ManagerDashboard: React.FC = () => {
   const [shiftDate, setShiftDate] = useState('');
   const [shiftStartTime, setShiftStartTime] = useState('09:00');
   const [shiftEndTime, setShiftEndTime] = useState('17:00');
-  const [shiftPosition, setShiftPosition] = useState('FOH');
+  const [shiftPosition, setShiftPosition] = useState('');
   const [shiftNotes, setShiftNotes] = useState('');
 
   const [editingEmployeeAvail, setEditingEmployeeAvail] = useState<Profile | null>(null);
@@ -100,6 +109,19 @@ export const ManagerDashboard: React.FC = () => {
     fetchInitialData();
   }, []);
 
+  // Refetch department-scoped data when the department changes
+  useEffect(() => {
+    if (selectedDepartment) {
+      fetchDepartmentData(selectedDepartment.id);
+    } else {
+      setEmployees([]);
+      setAvailabilities([]);
+      setWeeks([]);
+      setSelectedWeek(null);
+      setTimeOffRequests([]);
+    }
+  }, [selectedDepartment]);
+
   // Fetch shifts/acknowledgments when selectedWeek changes
   useEffect(() => {
     if (selectedWeek) {
@@ -113,37 +135,94 @@ export const ManagerDashboard: React.FC = () => {
   // Run validation checks when shifts or selectedWeek updates
   useEffect(() => {
     runScheduleValidations();
-  }, [shifts, selectedWeek, availabilities, employees]);
+  }, [shifts, selectedWeek, availabilities, employees, timeOffRequests, hoursCap]);
 
   const fetchInitialData = async () => {
+    if (!profile) return;
     setLoading(true);
     try {
-      // 1. Fetch Employees
+      // 1. App settings (branding + hours cap)
+      const { data: settingsData, error: settingsError } = await supabase
+        .from('app_settings')
+        .select('*')
+        .maybeSingle();
+      if (settingsError) throw settingsError;
+      if (settingsData) {
+        setOrgName(settingsData.org_name);
+        setHoursCap(Number(settingsData.weekly_hours_cap) || 39);
+      }
+
+      // 2. Departments this user can schedule (admins: all active)
+      const { data: deptData, error: deptError } = await supabase
+        .from('departments')
+        .select('*')
+        .eq('active', true)
+        .order('name');
+      if (deptError) throw deptError;
+
+      let managed = deptData || [];
+      if (profile.role !== 'admin') {
+        const { data: mdData, error: mdError } = await supabase
+          .from('manager_departments')
+          .select('department_id')
+          .eq('manager_id', profile.id);
+        if (mdError) throw mdError;
+        const managedIds = new Set((mdData || []).map(md => md.department_id));
+        managed = managed.filter(d => managedIds.has(d.id));
+      }
+      setDepartments(managed);
+      setSelectedDepartment(prev =>
+        prev && managed.some(d => d.id === prev.id) ? prev : (managed[0] ?? null)
+      );
+      if (managed.length === 0) {
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Error fetching data.');
+      setLoading(false);
+    }
+  };
+
+  const fetchDepartmentData = async (departmentId: string) => {
+    setLoading(true);
+    try {
+      // 1. Employees of this department
       const { data: empData, error: empError } = await supabase
         .from('profiles')
         .select('*')
+        .eq('department_id', departmentId)
+        .eq('role', 'employee')
         .order('full_name');
       if (empError) throw empError;
       setEmployees(empData || []);
+      const empIds = (empData || []).map(e => e.id);
 
-      // 2. Fetch Availabilities
-      const { data: availData, error: availError } = await supabase
-        .from('employee_availability')
-        .select('*');
-      if (availError) throw availError;
-      setAvailabilities(availData || []);
+      // 2. Their availabilities and time-off requests
+      if (empIds.length > 0) {
+        const [availRes, timeOffRes] = await Promise.all([
+          supabase.from('employee_availability').select('*').in('employee_id', empIds),
+          supabase.from('time_off_requests').select('*').in('employee_id', empIds).order('start_date')
+        ]);
+        if (availRes.error) throw availRes.error;
+        if (timeOffRes.error) throw timeOffRes.error;
+        setAvailabilities(availRes.data || []);
+        setTimeOffRequests(timeOffRes.data || []);
+      } else {
+        setAvailabilities([]);
+        setTimeOffRequests([]);
+      }
 
-      // 3. Fetch Schedule Weeks
+      // 3. Schedule weeks of this department
       const { data: weekData, error: weekError } = await supabase
         .from('schedule_weeks')
         .select('*')
+        .eq('department_id', departmentId)
         .order('week_start', { ascending: false });
       if (weekError) throw weekError;
       setWeeks(weekData || []);
 
       // Set default selected week to current or latest
       if (weekData && weekData.length > 0) {
-        // Try to find the week starting nearest to today
         const todayMonday = getMonday(new Date());
         const matchingWeek = weekData.find(w => w.week_start === todayMonday);
         setSelectedWeek(matchingWeek || weekData[0]);
@@ -190,7 +269,7 @@ export const ManagerDashboard: React.FC = () => {
   };
 
   const handleCreateDraftWeek = async () => {
-    if (isOffline) return;
+    if (isOffline || !selectedDepartment) return;
     setActionLoading(true);
     try {
       // Find what the next week start date should be: the week after the latest
@@ -210,6 +289,7 @@ export const ManagerDashboard: React.FC = () => {
         .insert({
           week_start: nextMondayStr,
           status: 'draft',
+          department_id: selectedDepartment.id,
           created_by: profile?.id
         })
         .select()
@@ -229,27 +309,29 @@ export const ManagerDashboard: React.FC = () => {
 
   const handleInviteEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isOffline) return;
+    if (isOffline || !selectedDepartment) return;
     setActionLoading(true);
     try {
-      const { error } = await supabase.rpc('create_employee_account', {
+      const { error } = await supabase.rpc('create_staff_account', {
         p_email: inviteEmail,
         p_password: invitePassword,
-        p_full_name: inviteName
+        p_full_name: inviteName,
+        p_role: 'employee',
+        p_department_ids: [selectedDepartment.id]
       });
 
       if (error) throw error;
 
-      showToast(`Invited ${inviteName} successfully!`, 'success');
+      showToast(`Invited ${inviteName} to ${selectedDepartment.name} successfully!`, 'success');
       setIsInviteModalOpen(false);
-      
+
       // Reset form
       setInviteEmail('');
       setInvitePassword('');
       setInviteName('');
-      
+
       // Reload employees
-      await fetchInitialData();
+      await fetchDepartmentData(selectedDepartment.id);
     } catch (err: any) {
       showToast(err.message || 'Failed to invite employee.', 'error');
     } finally {
@@ -301,6 +383,30 @@ export const ManagerDashboard: React.FC = () => {
       showToast(`${emp.full_name} has been deleted.`, 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to delete employee.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReviewTimeOff = async (request: TimeOffRequest, status: 'approved' | 'denied') => {
+    if (isOffline || !profile) return;
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('time_off_requests')
+        .update({
+          status,
+          reviewed_by: profile.id,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq('id', request.id)
+        .select()
+        .single();
+      if (error) throw error;
+      setTimeOffRequests(timeOffRequests.map(r => r.id === request.id ? data : r));
+      showToast(`Time off ${status}.`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update time-off request.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -381,7 +487,7 @@ export const ManagerDashboard: React.FC = () => {
     setShiftDate(dateStr);
     setShiftStartTime('09:00');
     setShiftEndTime('17:00');
-    setShiftPosition('Cook');
+    setShiftPosition('');
     setShiftNotes('');
     setIsShiftModalOpen(true);
   };
@@ -424,15 +530,17 @@ export const ManagerDashboard: React.FC = () => {
       return;
     }
 
-    // Check weekly 39 hours limit
+    // Check weekly hours cap (from app settings)
     const wouldExceedLimit = validateWeeklyHoursLimit(
       otherShifts,
       shiftEmployeeId,
-      duration
+      duration,
+      undefined,
+      hoursCap
     );
 
     if (wouldExceedLimit) {
-      showToast('Cannot schedule employee for more than 39 hours in a single week.', 'error');
+      showToast(`Cannot schedule employee for more than ${hoursCap} hours in a single week.`, 'error');
       return;
     }
 
@@ -610,14 +718,25 @@ export const ManagerDashboard: React.FC = () => {
       if (hasConflict) {
         warnings.push(`Warning: ${empName} is scheduled on ${formatDateString(shift.shift_date)} (${formatTimeString(shift.start_time)} - ${formatTimeString(shift.end_time)}) outside recorded availability.`);
       }
+
+      // Rule: Warn when a shift lands on approved time off (manager has final say)
+      const overlappingTimeOff = timeOffRequests.find(r =>
+        r.status === 'approved' &&
+        r.employee_id === shift.employee_id &&
+        shift.shift_date >= r.start_date &&
+        shift.shift_date <= r.end_date
+      );
+      if (overlappingTimeOff) {
+        warnings.push(`Warning: ${empName} has approved time off on ${formatDateString(shift.shift_date)} but is scheduled anyway.`);
+      }
     });
 
-    // Rule: Validate 39-hour limit
+    // Rule: Validate weekly hours cap
     Object.entries(employeeHours).forEach(([empId, hours]) => {
       const emp = employees.find(e => e.id === empId);
       const empName = emp?.full_name || 'Unknown Employee';
-      if (hours > 39.0) {
-        errors.push(`Blocker: ${empName} exceeds 39 scheduled hours (${hours.toFixed(1)} hrs).`);
+      if (hours > hoursCap) {
+        errors.push(`Blocker: ${empName} exceeds ${hoursCap} scheduled hours (${hours.toFixed(1)} hrs).`);
       }
     });
 
@@ -663,13 +782,22 @@ export const ManagerDashboard: React.FC = () => {
         <div className="space-y-8">
           <div>
             <h1 className="text-2xl font-extrabold text-white tracking-wider flex items-center gap-2">
-              <span>Spredsheep</span>
+              <span>{orgName}</span>
               <Shield className="w-5 h-5 text-indigo-400" />
             </h1>
-            <p className="text-xs text-indigo-300 font-semibold tracking-wide mt-1 uppercase">Manager Control</p>
+            <p className="text-xs text-indigo-300 font-semibold tracking-wide mt-1 uppercase">Scheduler</p>
           </div>
 
           <nav className="space-y-2">
+            {profile?.role === 'admin' && (
+              <button
+                onClick={() => navigate('/admin')}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer text-amber-300/80 hover:bg-slate-900 hover:text-amber-200"
+              >
+                <Shield className="w-5 h-5" />
+                <span>Admin Console</span>
+              </button>
+            )}
             <button
               onClick={() => setActiveTab('overview')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
@@ -704,6 +832,22 @@ export const ManagerDashboard: React.FC = () => {
               <span>Employees</span>
             </button>
             <button
+              onClick={() => setActiveTab('timeoff')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
+                activeTab === 'timeoff'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+              }`}
+            >
+              <CalendarOff className="w-5 h-5" />
+              <span className="flex-1 text-left">Time Off</span>
+              {timeOffRequests.filter(r => r.status === 'pending').length > 0 && (
+                <span className="min-w-5 h-5 px-1.5 rounded-full bg-amber-500/20 text-amber-300 text-[11px] font-bold flex items-center justify-center">
+                  {timeOffRequests.filter(r => r.status === 'pending').length}
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab('acknowledgments')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
                 activeTab === 'acknowledgments'
@@ -724,7 +868,7 @@ export const ManagerDashboard: React.FC = () => {
             </div>
             <div className="overflow-hidden">
               <p className="text-sm font-semibold text-white truncate">{profile?.full_name}</p>
-              <p className="text-xs text-slate-500 truncate">Manager</p>
+              <p className="text-xs text-slate-500 truncate capitalize">{profile?.role}</p>
             </div>
           </div>
           <button
@@ -773,36 +917,61 @@ export const ManagerDashboard: React.FC = () => {
             </div>
           )}
 
-          {/* WEEK PICKER PANEL */}
+          {/* DEPARTMENT + WEEK PICKER PANEL */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 glass-panel rounded-2xl border border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl">
-                <Calendar className="w-6 h-6" />
+            <div className="flex items-center gap-6 flex-wrap">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl">
+                  <Building2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Department</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <select
+                      className="bg-slate-900 border border-slate-800 text-white rounded-lg px-3 py-1 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      value={selectedDepartment?.id || ''}
+                      onChange={(e) => {
+                        const dept = departments.find(d => d.id === e.target.value);
+                        if (dept) setSelectedDepartment(dept);
+                      }}
+                    >
+                      {departments.map(d => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Active Scheduling Week</span>
-                <div className="flex items-center gap-2 mt-0.5">
-                  <select
-                    className="bg-slate-900 border border-slate-800 text-white rounded-lg px-3 py-1 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                    value={selectedWeek?.id || ''}
-                    onChange={(e) => {
-                      const wk = weeks.find(w => w.id === e.target.value);
-                      if (wk) setSelectedWeek(wk);
-                    }}
-                  >
-                    {weeks.map(w => (
-                      <option key={w.id} value={w.id}>
-                        Week of {formatDateString(w.week_start)} ({w.status})
-                      </option>
-                    ))}
-                  </select>
+
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl">
+                  <Calendar className="w-6 h-6" />
+                </div>
+                <div>
+                  <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Active Scheduling Week</span>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <select
+                      className="bg-slate-900 border border-slate-800 text-white rounded-lg px-3 py-1 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      value={selectedWeek?.id || ''}
+                      onChange={(e) => {
+                        const wk = weeks.find(w => w.id === e.target.value);
+                        if (wk) setSelectedWeek(wk);
+                      }}
+                    >
+                      {weeks.map(w => (
+                        <option key={w.id} value={w.id}>
+                          Week of {formatDateString(w.week_start)} ({w.status})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </div>
 
             <button
               onClick={handleCreateDraftWeek}
-              disabled={actionLoading || isOffline}
+              disabled={actionLoading || isOffline || !selectedDepartment}
               className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white text-sm font-semibold rounded-xl transition flex items-center gap-2 cursor-pointer shadow-lg shadow-indigo-600/15"
             >
               <Plus className="w-4 h-4" />
@@ -813,6 +982,16 @@ export const ManagerDashboard: React.FC = () => {
           {loading ? (
             <div className="flex items-center justify-center py-20">
               <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            </div>
+          ) : !selectedDepartment ? (
+            <div className="glass-panel p-10 rounded-2xl border border-slate-800/80 text-center space-y-2">
+              <Building2 className="w-10 h-10 text-slate-600 mx-auto" />
+              <h4 className="text-base font-bold text-white">No departments assigned</h4>
+              <p className="text-sm text-slate-500 max-w-sm mx-auto">
+                {profile?.role === 'admin'
+                  ? 'Create a department in the Admin Console to start scheduling.'
+                  : 'An admin needs to assign you to a department before you can schedule.'}
+              </p>
             </div>
           ) : (
             <>
@@ -1153,7 +1332,107 @@ export const ManagerDashboard: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 4: ACKNOWLEDGMENTS TRACKER */}
+              {/* TAB 4: TIME OFF REQUESTS */}
+              {activeTab === 'timeoff' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Time Off Requests</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Requests from employees of {selectedDepartment?.name}. You have the final say — approved time off shows as a warning if you schedule over it.
+                    </p>
+                  </div>
+
+                  {/* Pending */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">Awaiting Review</h4>
+                    {timeOffRequests.filter(r => r.status === 'pending').length === 0 ? (
+                      <p className="text-xs text-slate-500">No pending requests.</p>
+                    ) : (
+                      timeOffRequests.filter(r => r.status === 'pending').map(req => {
+                        const emp = employees.find(e => e.id === req.employee_id);
+                        return (
+                          <div key={req.id} className="glass-panel p-5 rounded-2xl border border-amber-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                              <p className="text-sm font-bold text-white">{emp?.full_name || 'Unknown Employee'}</p>
+                              <p className="text-xs text-slate-300">
+                                {formatDateString(req.start_date)}
+                                {req.end_date !== req.start_date && ` – ${formatDateString(req.end_date)}`}
+                              </p>
+                              {req.reason && <p className="text-xs text-slate-500 italic">“{req.reason}”</p>}
+                              <p className="text-[11px] text-slate-600">Requested {new Date(req.created_at).toLocaleDateString()}</p>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => handleReviewTimeOff(req, 'approved')}
+                                disabled={actionLoading || isOffline}
+                                className="px-4 py-2 bg-emerald-950/30 hover:bg-emerald-950/60 border border-emerald-900/40 text-xs font-bold text-emerald-300 rounded-lg transition cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleReviewTimeOff(req, 'denied')}
+                                disabled={actionLoading || isOffline}
+                                className="px-4 py-2 bg-rose-950/30 hover:bg-rose-950/60 border border-rose-900/40 text-xs font-bold text-rose-300 rounded-lg transition cursor-pointer"
+                              >
+                                Deny
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Reviewed */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">Reviewed</h4>
+                    {timeOffRequests.filter(r => r.status !== 'pending').length === 0 ? (
+                      <p className="text-xs text-slate-500">Nothing reviewed yet.</p>
+                    ) : (
+                      <div className="glass-panel rounded-2xl border border-slate-800 overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-900/80 border-b border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                              <th className="p-4">Employee</th>
+                              <th className="p-4">Dates</th>
+                              <th className="p-4">Status</th>
+                              <th className="p-4">Reviewed</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50 text-sm">
+                            {timeOffRequests.filter(r => r.status !== 'pending').map(req => {
+                              const emp = employees.find(e => e.id === req.employee_id);
+                              return (
+                                <tr key={req.id} className="hover:bg-slate-900/40 transition">
+                                  <td className="p-4 font-bold text-white">{emp?.full_name || 'Unknown'}</td>
+                                  <td className="p-4 text-slate-300 text-xs">
+                                    {formatDateString(req.start_date)}
+                                    {req.end_date !== req.start_date && ` – ${formatDateString(req.end_date)}`}
+                                  </td>
+                                  <td className="p-4">
+                                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                      req.status === 'approved'
+                                        ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30'
+                                        : 'bg-rose-950/20 text-rose-400 border border-rose-900/30'
+                                    }`}>
+                                      {req.status}
+                                    </span>
+                                  </td>
+                                  <td className="p-4 text-slate-400 text-xs">
+                                    {req.reviewed_at ? new Date(req.reviewed_at).toLocaleString() : '—'}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 5: ACKNOWLEDGMENTS TRACKER */}
               {activeTab === 'acknowledgments' && selectedWeek && (
                 <div className="space-y-6">
                   <div>
@@ -1257,6 +1536,15 @@ export const ManagerDashboard: React.FC = () => {
         >
           <Users className="w-5 h-5" />
           <span>Employees</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('timeoff')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold transition cursor-pointer ${
+            activeTab === 'timeoff' ? 'text-indigo-400' : 'text-slate-500'
+          }`}
+        >
+          <CalendarOff className="w-5 h-5" />
+          <span>Time Off</span>
         </button>
         <button
           onClick={() => setActiveTab('acknowledgments')}
@@ -1413,18 +1701,21 @@ export const ManagerDashboard: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Position</label>
-                <select
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Position / Role</label>
+                <input
+                  type="text"
+                  required
+                  list="position-suggestions"
                   className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg py-2.5 px-3 text-sm text-white focus:outline-none"
+                  placeholder="e.g. Cashier, Cook, Support Agent"
                   value={shiftPosition}
                   onChange={(e) => setShiftPosition(e.target.value)}
-                >
-                  <option value="Lead">Lead</option>
-                  <option value="FOH">FOH</option>
-                  <option value="Opener">Opener</option>
-                  <option value="Closer">Closer</option>
-                  <option value="Cook">Cook</option>
-                </select>
+                />
+                <datalist id="position-suggestions">
+                  {[...new Set(shifts.map(s => s.position))].map(p => (
+                    <option key={p} value={p} />
+                  ))}
+                </datalist>
               </div>
 
               <div>

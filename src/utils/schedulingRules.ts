@@ -117,9 +117,10 @@ export function validateWeeklyHoursLimit(
   shifts: { employee_id: string; start_time: string; end_time: string; id?: string }[],
   employeeId: string,
   newShiftHours: number = 0,
-  excludeShiftId?: string
+  excludeShiftId?: string,
+  hoursCap: number = 39.0
 ): boolean {
   const empShifts = shifts.filter(s => s.employee_id === employeeId && (!excludeShiftId || s.id !== excludeShiftId));
   const currentHours = calculateWeeklyHours(empShifts);
-  return (currentHours + newShiftHours) > 39.0;
+  return (currentHours + newShiftHours) > hoursCap;
 }

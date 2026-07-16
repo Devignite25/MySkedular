@@ -109,7 +109,7 @@ describe('Route Protection Guards', () => {
 
       render(
         <MemoryRouter>
-          <RoleProtectedRoute allowedRole="manager">
+          <RoleProtectedRoute allowedRoles={['manager']}>
             <div>Manager Dashboard</div>
           </RoleProtectedRoute>
         </MemoryRouter>
@@ -137,7 +137,7 @@ describe('Route Protection Guards', () => {
             <Route
               path="/manager-dashboard"
               element={
-                <RoleProtectedRoute allowedRole="manager">
+                <RoleProtectedRoute allowedRoles={['manager']}>
                   <div>Manager Dashboard</div>
                 </RoleProtectedRoute>
               }
@@ -168,7 +168,7 @@ describe('Route Protection Guards', () => {
             <Route
               path="/employee"
               element={
-                <RoleProtectedRoute allowedRole="employee">
+                <RoleProtectedRoute allowedRoles={['employee']}>
                   <div>Employee Dashboard</div>
                 </RoleProtectedRoute>
               }

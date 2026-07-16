@@ -13,7 +13,7 @@ import {
   getWeekDays,
   DAY_NAMES
 } from '../../utils/dateUtils';
-import type { Profile, EmployeeAvailability, ScheduleWeek, Shift, ScheduleAcknowledgment } from '../../types';
+import type { Profile, EmployeeAvailability, ScheduleWeek, Shift, ScheduleAcknowledgment, TimeOffRequest } from '../../types';
 import {
   Calendar,
   User,
@@ -24,13 +24,15 @@ import {
   AlertCircle,
   CheckCircle,
   WifiOff,
-  ThumbsUp
+  ThumbsUp,
+  CalendarOff,
+  Trash2
 } from 'lucide-react';
 
 export const EmployeeDashboard: React.FC = () => {
   const { signOut, profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'home' | 'myschedule' | 'teamschedule' | 'availability'>('home');
-  
+  const [activeTab, setActiveTab] = useState<'home' | 'myschedule' | 'teamschedule' | 'availability' | 'timeoff'>('home');
+
   // Data State
   const [weeks, setWeeks] = useState<ScheduleWeek[]>([]);
   const [selectedWeek, setSelectedWeek] = useState<ScheduleWeek | null>(null);
@@ -38,6 +40,12 @@ export const EmployeeDashboard: React.FC = () => {
   const [myAvailability, setMyAvailability] = useState<EmployeeAvailability[]>([]);
   const [myAcknowledgment, setMyAcknowledgment] = useState<ScheduleAcknowledgment | null>(null);
   const [teamMembers, setTeamMembers] = useState<Profile[]>([]);
+  const [myTimeOff, setMyTimeOff] = useState<TimeOffRequest[]>([]);
+
+  // Time-off request form
+  const [timeOffStart, setTimeOffStart] = useState('');
+  const [timeOffEnd, setTimeOffEnd] = useState('');
+  const [timeOffReason, setTimeOffReason] = useState('');
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -102,7 +110,16 @@ export const EmployeeDashboard: React.FC = () => {
       });
       setMyAvailability(fullAvails);
 
-      // 3. Fetch published weeks (RLS restricts employees from viewing drafts)
+      // 3. Fetch my time-off requests
+      const { data: timeOffData, error: timeOffError } = await supabase
+        .from('time_off_requests')
+        .select('*')
+        .eq('employee_id', profile.id)
+        .order('start_date', { ascending: false });
+      if (timeOffError) throw timeOffError;
+      setMyTimeOff(timeOffData || []);
+
+      // 4. Fetch published weeks (RLS restricts employees from viewing drafts)
       const { data: weekData, error: weekError } = await supabase
         .from('schedule_weeks')
         .select('*')
@@ -179,6 +196,58 @@ export const EmployeeDashboard: React.FC = () => {
       showToast('Schedule acknowledged. Thank you!', 'success');
     } catch (err: any) {
       showToast(err.message || 'Failed to acknowledge schedule.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRequestTimeOff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isOffline || !profile) return;
+    if (!timeOffStart || !timeOffEnd) return;
+    if (timeOffEnd < timeOffStart) {
+      showToast('End date cannot be before the start date.', 'error');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('time_off_requests')
+        .insert({
+          employee_id: profile.id,
+          start_date: timeOffStart,
+          end_date: timeOffEnd,
+          reason: timeOffReason.trim() || null
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      setMyTimeOff([data, ...myTimeOff]);
+      setTimeOffStart('');
+      setTimeOffEnd('');
+      setTimeOffReason('');
+      showToast('Time-off request submitted. Your manager will review it.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to submit time-off request.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleCancelTimeOff = async (request: TimeOffRequest) => {
+    if (isOffline) return;
+    if (!confirm('Cancel this pending time-off request?')) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase
+        .from('time_off_requests')
+        .delete()
+        .eq('id', request.id);
+      if (error) throw error;
+      setMyTimeOff(myTimeOff.filter(r => r.id !== request.id));
+      showToast('Request cancelled.', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to cancel request.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -312,6 +381,17 @@ export const EmployeeDashboard: React.FC = () => {
             >
               <Clock className="w-5 h-5" />
               <span>My Availability</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('timeoff')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition cursor-pointer ${
+                activeTab === 'timeoff'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/10'
+                  : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
+              }`}
+            >
+              <CalendarOff className="w-5 h-5" />
+              <span>Time Off</span>
             </button>
           </nav>
         </div>
@@ -693,6 +773,101 @@ export const EmployeeDashboard: React.FC = () => {
                   </button>
                 </div>
               )}
+
+              {activeTab === 'timeoff' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">Time Off</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Request days off and track your manager's decision.</p>
+                  </div>
+
+                  {/* Request form */}
+                  <form onSubmit={handleRequestTimeOff} className="glass-panel p-5 rounded-2xl border border-slate-800 space-y-4">
+                    <h4 className="text-sm font-bold text-white">New Request</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5">First day off</label>
+                        <input
+                          type="date"
+                          required
+                          value={timeOffStart}
+                          onChange={(e) => setTimeOffStart(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg py-2 px-3 text-sm text-white focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-400 mb-1.5">Last day off</label>
+                        <input
+                          type="date"
+                          required
+                          value={timeOffEnd}
+                          min={timeOffStart || undefined}
+                          onChange={(e) => setTimeOffEnd(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg py-2 px-3 text-sm text-white focus:outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-400 mb-1.5">Reason (optional)</label>
+                      <input
+                        type="text"
+                        value={timeOffReason}
+                        onChange={(e) => setTimeOffReason(e.target.value)}
+                        placeholder="e.g. Family trip, medical appointment"
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded-lg py-2 px-3 text-sm text-white placeholder-slate-500 focus:outline-none"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={actionLoading || isOffline}
+                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-bold text-sm rounded-xl transition cursor-pointer"
+                    >
+                      {actionLoading ? 'Submitting…' : 'Submit Request'}
+                    </button>
+                  </form>
+
+                  {/* My requests */}
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">My Requests</h4>
+                    {myTimeOff.length === 0 ? (
+                      <p className="text-xs text-slate-500">No time-off requests yet.</p>
+                    ) : (
+                      myTimeOff.map(req => (
+                        <div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-slate-900/60 border border-slate-800 rounded-2xl">
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-white">
+                              {formatDateString(req.start_date)}
+                              {req.end_date !== req.start_date && ` – ${formatDateString(req.end_date)}`}
+                            </p>
+                            {req.reason && <p className="text-xs text-slate-500 italic">“{req.reason}”</p>}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0">
+                            <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold capitalize ${
+                              req.status === 'approved'
+                                ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/30'
+                                : req.status === 'denied'
+                                  ? 'bg-rose-950/20 text-rose-400 border border-rose-900/30'
+                                  : 'bg-amber-950/30 text-amber-300 border border-amber-900/30'
+                            }`}>
+                              {req.status}
+                            </span>
+                            {req.status === 'pending' && (
+                              <button
+                                onClick={() => handleCancelTimeOff(req)}
+                                disabled={actionLoading || isOffline}
+                                title="Cancel request"
+                                className="p-2 text-slate-500 hover:text-rose-400 transition cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </main>
@@ -735,6 +910,15 @@ export const EmployeeDashboard: React.FC = () => {
         >
           <Clock className="w-5 h-5" />
           <span>Availability</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('timeoff')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-bold transition cursor-pointer ${
+            activeTab === 'timeoff' ? 'text-indigo-400' : 'text-slate-500'
+          }`}
+        >
+          <CalendarOff className="w-5 h-5" />
+          <span>Time Off</span>
         </button>
       </footer>
     </div>

@@ -6,8 +6,10 @@ import { ForgotPassword } from './features/auth/ForgotPassword';
 import { ResetPassword } from './features/auth/ResetPassword';
 import {
   UnauthenticatedRoute,
-  RoleProtectedRoute
+  RoleProtectedRoute,
+  homeRouteForRole
 } from './features/auth/RouteProtection';
+import { AdminDashboard } from './features/admin/AdminDashboard';
 import { ManagerDashboard } from './features/manager/ManagerDashboard';
 import { EmployeeDashboard } from './features/employee/EmployeeDashboard';
 
@@ -26,11 +28,7 @@ const RootRedirect: React.FC = () => {
     return <Navigate to="/login" replace />;
   }
 
-  if (profile?.role === 'manager') {
-    return <Navigate to="/manager" replace />;
-  }
-
-  return <Navigate to="/employee" replace />;
+  return <Navigate to={homeRouteForRole(profile?.role)} replace />;
 };
 
 const AppContent: React.FC = () => {
@@ -74,9 +72,17 @@ const AppContent: React.FC = () => {
 
       {/* Protected Dashboard Routes */}
       <Route
+        path="/admin"
+        element={
+          <RoleProtectedRoute allowedRoles={['admin']}>
+            <AdminDashboard />
+          </RoleProtectedRoute>
+        }
+      />
+      <Route
         path="/manager"
         element={
-          <RoleProtectedRoute allowedRole="manager">
+          <RoleProtectedRoute allowedRoles={['manager', 'admin']}>
             <ManagerDashboard />
           </RoleProtectedRoute>
         }
@@ -84,7 +90,7 @@ const AppContent: React.FC = () => {
       <Route
         path="/employee"
         element={
-          <RoleProtectedRoute allowedRole="employee">
+          <RoleProtectedRoute allowedRoles={['employee']}>
             <EmployeeDashboard />
           </RoleProtectedRoute>
         }
