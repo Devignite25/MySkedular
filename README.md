@@ -38,7 +38,8 @@ Spredsheep is a sleek, polished, and production-ready **Employee Scheduling Prog
 ├── .github/workflows/deploy-pages.yml  # Pages deployment workflow
 ├── supabase/
 │   ├── migrations/
-│   │   └── 20260716000000_init_schema.sql # Database schema, triggers & RPCs
+│   │   ├── 20260716000000_init_schema.sql # Database schema, triggers & RPCs
+│   │   └── 20260717000000_fix_rpc_rls_and_overnight.sql # RPC/RLS fixes, overnight shifts
 │   └── seed.sql                           # Seed database records
 ├── src/
 │   ├── features/
@@ -60,7 +61,7 @@ All access is restricted using **Row Level Security (RLS)** in PostgreSQL.
 
 | Table Name | Description | RLS Policy Summary |
 | :--- | :--- | :--- |
-| `profiles` | User accounts containing `full_name`, `role`, and `active` status. | Anyone can read active profiles. Users can update their own names. Managers can write/edit all. |
+| `profiles` | User accounts containing `full_name`, `role`, and `active` status. | Authenticated users can read active profiles and their own. Users can update their own profile (a trigger blocks non-managers from changing `role`/`active`). Managers can edit all. |
 | `employee_availability` | Employee weekly hour preferences per day (0-6). | Employees can read and edit their own. Managers can read all. |
 | `schedule_weeks` | Schedule bounds (`week_start`) and state (`draft` vs `published`). | Employees can read only published weeks. Managers can read/write all. |
 | `shifts` | Daily scheduled work shifts. | Employees can read published shifts. Managers can write/edit all. |
@@ -84,7 +85,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 
 ### 3. Apply Schema & Seed Database
 Import the schema and seed data to your Supabase project:
-1. Copy the SQL from `supabase/migrations/20260716000000_init_schema.sql` and run it inside the Supabase SQL Editor.
+1. Run each file in `supabase/migrations/` (in filename order) inside the Supabase SQL Editor.
 2. Copy the SQL from `supabase/seed.sql` and run it in the SQL Editor to populate sample employees, draft/published schedules, and availability rules.
 
 ### 4. Run Locally

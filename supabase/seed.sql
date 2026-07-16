@@ -25,28 +25,28 @@ BEGIN
 
   -- Insert users into auth.users
   -- Jorge (Manager)
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (jorge_id, '00000000-0000-0000-0000-000000000000', 'jorge@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Jorge","role":"manager"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (jorge_id, '00000000-0000-0000-0000-000000000000', 'jorge@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Jorge","role":"manager"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
   
   -- Carla (Employee)
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (carla_id, '00000000-0000-0000-0000-000000000000', 'carla@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Carla","role":"employee"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (carla_id, '00000000-0000-0000-0000-000000000000', 'carla@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Carla","role":"employee"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
 
   -- Aidel
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (aidel_id, '00000000-0000-0000-0000-000000000000', 'aidel@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Aidel","role":"employee"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (aidel_id, '00000000-0000-0000-0000-000000000000', 'aidel@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Aidel","role":"employee"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
 
   -- Amanda
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (amanda_id, '00000000-0000-0000-0000-000000000000', 'amanda@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Amanda","role":"employee"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (amanda_id, '00000000-0000-0000-0000-000000000000', 'amanda@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Amanda","role":"employee"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
 
   -- Marta
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (marta_id, '00000000-0000-0000-0000-000000000000', 'marta@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Marta","role":"employee"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (marta_id, '00000000-0000-0000-0000-000000000000', 'marta@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Marta","role":"employee"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
 
   -- Luisa
-  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token)
-  VALUES (luisa_id, '00000000-0000-0000-0000-000000000000', 'luisa@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Luisa","role":"employee"}', 'authenticated', 'authenticated', '');
+  INSERT INTO auth.users (id, instance_id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, role, aud, confirmation_token, recovery_token, email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token, reauthentication_token)
+  VALUES (luisa_id, '00000000-0000-0000-0000-000000000000', 'luisa@example.com', hashed_pw, NOW(), '{"provider":"email","providers":["email"]}', '{"full_name":"Luisa","role":"employee"}', 'authenticated', 'authenticated', '', '', '', '', '', '', '', '');
 
   -- Update profiles explicitly just to guarantee triggers align
   UPDATE public.profiles SET role = 'manager', full_name = 'Jorge' WHERE id = jorge_id;

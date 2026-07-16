@@ -149,5 +149,37 @@ describe('Route Protection Guards', () => {
       expect(screen.getByText('Employee Dashboard')).toBeInTheDocument();
       expect(screen.queryByText('Manager Dashboard')).not.toBeInTheDocument();
     });
+
+    it('shows an error state instead of redirect-looping when profile fails to load', () => {
+      vi.mocked(useAuth).mockReturnValue({
+        session: { user: { id: 'employee-1' } } as any,
+        user: { id: 'employee-1' } as any,
+        profile: null,
+        loading: false,
+        recoveryMode: false,
+        setRecoveryMode: () => {},
+        updatePassword: async () => {},
+        signOut: async () => {},
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/employee']}>
+          <Routes>
+            <Route
+              path="/employee"
+              element={
+                <RoleProtectedRoute allowedRole="employee">
+                  <div>Employee Dashboard</div>
+                </RoleProtectedRoute>
+              }
+            />
+          </Routes>
+        </MemoryRouter>
+      );
+
+      expect(screen.getByText('Unable to load your profile')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /sign out/i })).toBeInTheDocument();
+      expect(screen.queryByText('Employee Dashboard')).not.toBeInTheDocument();
+    });
   });
 });

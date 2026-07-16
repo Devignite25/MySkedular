@@ -193,12 +193,16 @@ export const ManagerDashboard: React.FC = () => {
     if (isOffline) return;
     setActionLoading(true);
     try {
-      // Find what the next week start date should be.
-      // If there are weeks, take the max start date and add 7 days. Otherwise, use current week's Monday.
+      // Find what the next week start date should be: the week after the latest
+      // existing week, but never earlier than the current week's Monday (so a
+      // stale schedule from months ago doesn't produce a draft in the past).
       let nextMondayStr = getMonday(new Date());
       if (weeks.length > 0) {
         const sortedWeeks = [...weeks].sort((a, b) => b.week_start.localeCompare(a.week_start));
-        nextMondayStr = addDays(sortedWeeks[0].week_start, 7);
+        const candidate = addDays(sortedWeeks[0].week_start, 7);
+        if (candidate.localeCompare(nextMondayStr) > 0) {
+          nextMondayStr = candidate;
+        }
       }
 
       const { data, error } = await supabase
@@ -229,9 +233,9 @@ export const ManagerDashboard: React.FC = () => {
     setActionLoading(true);
     try {
       const { error } = await supabase.rpc('create_employee_account', {
-        email: inviteEmail,
-        password: invitePassword,
-        full_name: inviteName
+        p_email: inviteEmail,
+        p_password: invitePassword,
+        p_full_name: inviteName
       });
 
       if (error) throw error;
@@ -486,42 +490,17 @@ export const ManagerDashboard: React.FC = () => {
 
     setActionLoading(true);
     try {
-      // Fetch previous week's shifts
-      const { data: prevShifts, error: fetchError } = await supabase
-        .from('shifts')
-        .select('*')
-        .eq('schedule_week_id', prevWeek.id);
+      // Copy runs server-side in a single transaction: if any copied shift
+      // fails validation, the target week's existing shifts are untouched.
+      const { data: copiedCount, error: copyError } = await supabase
+        .rpc('copy_week_shifts', {
+          p_source_week_id: prevWeek.id,
+          p_target_week_id: selectedWeek.id
+        });
 
-      if (fetchError) throw fetchError;
-      if (!prevShifts || prevShifts.length === 0) {
-        showToast('Previous week does not contain any shifts.', 'error');
-        return;
-      }
+      if (copyError) throw copyError;
 
-      // Delete existing shifts in current selected week
-      await supabase.from('shifts').delete().eq('schedule_week_id', selectedWeek.id);
-
-      // Copy shifts, adjusting the dates to match the current week (adding 7 days)
-      const newShifts = prevShifts.map(s => {
-        const currentShiftDate = addDays(s.shift_date, 7);
-        return {
-          schedule_week_id: selectedWeek.id,
-          employee_id: s.employee_id,
-          shift_date: currentShiftDate,
-          start_time: s.start_time,
-          end_time: s.end_time,
-          position: s.position,
-          notes: s.notes
-        };
-      });
-
-      const { error: insertError } = await supabase
-        .from('shifts')
-        .insert(newShifts);
-
-      if (insertError) throw insertError;
-
-      showToast(`Successfully copied ${newShifts.length} shifts from previous week!`, 'success');
+      showToast(`Successfully copied ${copiedCount} shifts from previous week!`, 'success');
       fetchWeekData(selectedWeek.id);
     } catch (err: any) {
       showToast(err.message || 'Failed to copy previous week.', 'error');

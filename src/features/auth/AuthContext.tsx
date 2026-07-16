@@ -55,16 +55,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      (event, newSession) => {
         setSession(newSession);
         setUser(newSession?.user ?? null);
-        
+
         if (event === 'PASSWORD_RECOVERY') {
           setRecoveryMode(true);
         }
 
         if (newSession?.user) {
-          await fetchProfile(newSession.user.id);
+          // supabase-js holds its auth lock while this callback runs; issuing
+          // another Supabase request inside it can deadlock. Defer past the lock.
+          const userId = newSession.user.id;
+          setTimeout(() => { fetchProfile(userId); }, 0);
         } else {
           setProfile(null);
           setLoading(false);
