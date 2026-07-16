@@ -16,6 +16,8 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 -- 1a. Repair existing auth.users rows created by direct inserts (seed/RPC):
 --     GoTrue errors on NULL string token columns.
 UPDATE auth.users SET
+  created_at                 = COALESCE(created_at, NOW()),
+  updated_at                 = COALESCE(updated_at, NOW()),
   confirmation_token         = COALESCE(confirmation_token, ''),
   recovery_token             = COALESCE(recovery_token, ''),
   email_change               = COALESCE(email_change, ''),
@@ -24,7 +26,8 @@ UPDATE auth.users SET
   phone_change               = COALESCE(phone_change, ''),
   phone_change_token         = COALESCE(phone_change_token, ''),
   reauthentication_token     = COALESCE(reauthentication_token, '')
-WHERE confirmation_token IS NULL OR recovery_token IS NULL OR email_change IS NULL
+WHERE created_at IS NULL OR updated_at IS NULL
+   OR confirmation_token IS NULL OR recovery_token IS NULL OR email_change IS NULL
    OR email_change_token_new IS NULL OR email_change_token_current IS NULL
    OR phone_change IS NULL OR phone_change_token IS NULL OR reauthentication_token IS NULL;
 
