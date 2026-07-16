@@ -9,6 +9,7 @@ import {
   Settings,
   Plus,
   Trash2,
+  Pencil,
   CalendarRange,
   CheckCircle,
   AlertCircle,
@@ -28,6 +29,13 @@ export const AdminDashboard: React.FC = () => {
   const [staff, setStaff] = useState<Profile[]>([]);
   const [managerDepartments, setManagerDepartments] = useState<ManagerDepartment[]>([]);
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  const [emailById, setEmailById] = useState<Record<string, string>>({});
+
+  // Edit staff modal
+  const [editingStaff, setEditingStaff] = useState<Profile | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPassword, setEditPassword] = useState('');
 
   // UI
   const [loading, setLoading] = useState(true);
@@ -69,22 +77,29 @@ export const AdminDashboard: React.FC = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [deptRes, staffRes, mdRes, settingsRes] = await Promise.all([
+      const [deptRes, staffRes, mdRes, settingsRes, emailsRes] = await Promise.all([
         supabase.from('departments').select('*').order('name'),
         supabase.from('profiles').select('*').order('full_name'),
         supabase.from('manager_departments').select('*'),
-        supabase.from('app_settings').select('*').single()
+        supabase.from('app_settings').select('*').single(),
+        supabase.rpc('list_staff_emails')
       ]);
 
       if (deptRes.error) throw deptRes.error;
       if (staffRes.error) throw staffRes.error;
       if (mdRes.error) throw mdRes.error;
       if (settingsRes.error) throw settingsRes.error;
+      if (emailsRes.error) throw emailsRes.error;
 
       setDepartments(deptRes.data || []);
       setStaff(staffRes.data || []);
       setManagerDepartments(mdRes.data || []);
       setSettings(settingsRes.data);
+      const emailMap: Record<string, string> = {};
+      (emailsRes.data as Array<{ id: string; email: string }> | null)?.forEach(row => {
+        emailMap[row.id] = row.email;
+      });
+      setEmailById(emailMap);
       setOrgNameInput(settingsRes.data?.org_name ?? '');
       setHoursCapInput(String(settingsRes.data?.weekly_hours_cap ?? 39));
     } catch (err: any) {
@@ -222,6 +237,35 @@ export const AdminDashboard: React.FC = () => {
       await fetchAll();
     } catch (err: any) {
       showToast(err.message || 'Failed to create staff account.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const openEditModal = (member: Profile) => {
+    setEditingStaff(member);
+    setEditName(member.full_name);
+    setEditEmail(emailById[member.id] ?? '');
+    setEditPassword('');
+  };
+
+  const handleUpdateStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isOffline || !editingStaff) return;
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc('update_staff_account', {
+        p_user_id: editingStaff.id,
+        p_email: editEmail.trim(),
+        p_full_name: editName.trim(),
+        p_password: editPassword.trim() ? editPassword : null
+      });
+      if (error) throw error;
+      showToast(`${editName.trim()} updated.`, 'success');
+      setEditingStaff(null);
+      await fetchAll();
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update account.', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -564,6 +608,7 @@ export const AdminDashboard: React.FC = () => {
                         <div>
                           <h4 className="text-base font-bold text-white">{m.full_name}</h4>
                           <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500">manager</span>
+                          {emailById[m.id] && <p className="text-[11px] text-slate-500 mt-0.5 break-all">{emailById[m.id]}</p>}
                         </div>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
@@ -597,6 +642,13 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2 pt-4 border-t border-slate-800/40 mt-4 justify-end">
+                      <button
+                        onClick={() => openEditModal(m)}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] font-bold text-slate-300 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
                       <button
                         onClick={() => handleToggleStaffActive(m)}
                         disabled={isOffline}
@@ -637,6 +689,7 @@ export const AdminDashboard: React.FC = () => {
                         <div>
                           <h4 className="text-base font-bold text-white">{emp.full_name}</h4>
                           <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500">employee</span>
+                          {emailById[emp.id] && <p className="text-[11px] text-slate-500 mt-0.5 break-all">{emailById[emp.id]}</p>}
                         </div>
                       </div>
                       <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
@@ -661,6 +714,13 @@ export const AdminDashboard: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2 pt-4 border-t border-slate-800/40 mt-4 justify-end">
+                      <button
+                        onClick={() => openEditModal(emp)}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] font-bold text-slate-300 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
                       <button
                         onClick={() => handleToggleStaffActive(emp)}
                         disabled={isOffline}
@@ -691,15 +751,25 @@ export const AdminDashboard: React.FC = () => {
               <h4 className="text-sm font-bold uppercase tracking-wider text-slate-400">Admins</h4>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {admins.map(a => (
-                  <div key={a.id} className="glass-panel p-5 rounded-2xl border border-slate-800">
+                  <div key={a.id} className="glass-panel p-5 rounded-2xl border border-slate-800 flex flex-col justify-between">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-amber-600/10 text-amber-400 flex items-center justify-center">
                         <Shield className="w-5 h-5" />
                       </div>
-                      <div>
+                      <div className="overflow-hidden">
                         <h4 className="text-base font-bold text-white">{a.full_name}</h4>
                         <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500">admin</span>
+                        {emailById[a.id] && <p className="text-[11px] text-slate-500 mt-0.5 break-all">{emailById[a.id]}</p>}
                       </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-4 border-t border-slate-800/40 mt-4 justify-end">
+                      <button
+                        onClick={() => openEditModal(a)}
+                        className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-[11px] font-bold text-slate-300 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                        <span>Edit</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -843,6 +913,65 @@ export const AdminDashboard: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setIsStaffModalOpen(false)}
+                  className="px-4 py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl font-semibold text-sm text-slate-300 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Staff Modal */}
+      {editingStaff && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4">
+          <div className="glass-panel w-full max-w-md p-7 rounded-2xl border border-slate-800 bg-[#0d1220]">
+            <h3 className="text-lg font-bold text-white mb-1">Edit Account</h3>
+            <p className="text-xs text-slate-400 mb-5 capitalize">{editingStaff.role} account</p>
+            <form onSubmit={handleUpdateStaff} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Full name</label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Email / username</label>
+                <input
+                  type="email"
+                  required
+                  value={editEmail}
+                  onChange={e => setEditEmail(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">New password</label>
+                <input
+                  type="password"
+                  minLength={8}
+                  value={editPassword}
+                  onChange={e => setEditPassword(e.target.value)}
+                  placeholder="Leave blank to keep current password"
+                  className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition"
+                />
+              </div>
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={actionLoading}
+                  className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 rounded-xl font-semibold text-sm text-white transition cursor-pointer"
+                >
+                  {actionLoading ? 'Saving…' : 'Save Changes'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingStaff(null)}
                   className="px-4 py-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-xl font-semibold text-sm text-slate-300 transition cursor-pointer"
                 >
                   Cancel
