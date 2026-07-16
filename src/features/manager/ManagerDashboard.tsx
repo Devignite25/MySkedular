@@ -277,6 +277,35 @@ export const ManagerDashboard: React.FC = () => {
     }
   };
 
+  const handleDeleteEmployee = async (emp: Profile) => {
+    if (isOffline) return;
+    if (!confirm(
+      `Permanently delete ${emp.full_name}? This removes their account, availability, all of their shifts, and acknowledgments. This cannot be undone.\n\nIf you just want to stop scheduling them, use Deactivate instead.`
+    )) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const { error } = await supabase.rpc('delete_employee_account', {
+        p_employee_id: emp.id
+      });
+
+      if (error) throw error;
+
+      setEmployees(employees.filter(e => e.id !== emp.id));
+      setAvailabilities(availabilities.filter(a => a.employee_id !== emp.id));
+      // Their shifts/acknowledgments were cascade-deleted; refresh the week view
+      if (selectedWeek) {
+        fetchWeekData(selectedWeek.id);
+      }
+      showToast(`${emp.full_name} has been deleted.`, 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Failed to delete employee.', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleEditAvailability = (emp: Profile) => {
     setEditingEmployeeAvail(emp);
     const empAvails = availabilities.filter(a => a.employee_id === emp.id);
@@ -1105,6 +1134,15 @@ export const ManagerDashboard: React.FC = () => {
                                 }`}
                               >
                                 {emp.active ? 'Deactivate' : 'Activate'}
+                              </button>
+
+                              <button
+                                onClick={() => handleDeleteEmployee(emp)}
+                                title="Delete employee permanently"
+                                className="px-3 py-1.5 bg-rose-950/40 hover:bg-rose-900/50 border border-rose-900/50 text-[11px] font-bold text-rose-300 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
                               </button>
                             </div>
                           )}
