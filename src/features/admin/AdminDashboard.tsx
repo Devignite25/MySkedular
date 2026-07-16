@@ -16,8 +16,10 @@ import {
   LogOut,
   UserPlus,
   Shield,
-  WifiOff
+  WifiOff,
+  KeyRound
 } from 'lucide-react';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 export const AdminDashboard: React.FC = () => {
   const { signOut, profile } = useAuth();
@@ -43,6 +45,7 @@ export const AdminDashboard: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   // Departments tab
   const [newDepartmentName, setNewDepartmentName] = useState('');
@@ -454,6 +457,13 @@ export const AdminDashboard: React.FC = () => {
               <p className="text-[11px] text-slate-500">Admin</p>
             </div>
           </div>
+          <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-3 transition cursor-pointer text-slate-400 hover:bg-slate-900 hover:text-slate-200"
+          >
+            <KeyRound className="w-4.5 h-4.5" />
+            <span>Change Password</span>
+          </button>
           <button
             onClick={() => signOut()}
             className="w-full px-3.5 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-3 transition cursor-pointer text-slate-400 hover:bg-rose-950/30 hover:text-rose-300"
@@ -870,10 +880,10 @@ export const AdminDashboard: React.FC = () => {
               <input
                 type="password"
                 required
-                minLength={8}
+                minLength={6}
                 value={staffPassword}
                 onChange={e => setStaffPassword(e.target.value)}
-                placeholder="Temporary password (min 8 chars)"
+                placeholder="Temporary password (min 6 chars)"
                 className="w-full px-4 py-3 bg-slate-900/60 border border-slate-800 focus:border-indigo-500 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none transition"
               />
 
@@ -954,7 +964,7 @@ export const AdminDashboard: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">New password</label>
                 <input
                   type="password"
-                  minLength={8}
+                  minLength={6}
                   value={editPassword}
                   onChange={e => setEditPassword(e.target.value)}
                   placeholder="Leave blank to keep current password"
@@ -981,6 +991,8 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ChangePasswordModal open={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} />
     </div>
   );
 };

@@ -40,8 +40,10 @@ import {
   Shield,
   WifiOff,
   Building2,
-  CalendarOff
+  CalendarOff,
+  KeyRound
 } from 'lucide-react';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 export const ManagerDashboard: React.FC = () => {
   const { signOut, profile } = useAuth();
@@ -67,6 +69,7 @@ export const ManagerDashboard: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   // Modals
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -872,6 +875,13 @@ export const ManagerDashboard: React.FC = () => {
             </div>
           </div>
           <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition cursor-pointer"
+          >
+            <KeyRound className="w-5 h-5" />
+            <span>Change Password</span>
+          </button>
+          <button
             onClick={signOut}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 transition cursor-pointer"
           >
@@ -895,9 +905,14 @@ export const ManagerDashboard: React.FC = () => {
             <span>Spredsheep</span>
             <Shield className="w-4 h-4 text-indigo-400" />
           </span>
-          <button onClick={signOut} className="text-rose-400 p-1">
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setIsPasswordModalOpen(true)} className="text-slate-400 p-1" title="Change password">
+              <KeyRound className="w-5 h-5" />
+            </button>
+            <button onClick={signOut} className="text-rose-400 p-1" title="Sign out">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         {/* MAIN PANEL CONTENT */}
@@ -1834,6 +1849,8 @@ export const ManagerDashboard: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ChangePasswordModal open={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} />
     </div>
   );
 };

@@ -26,8 +26,10 @@ import {
   WifiOff,
   ThumbsUp,
   CalendarOff,
-  Trash2
+  Trash2,
+  KeyRound
 } from 'lucide-react';
+import { ChangePasswordModal } from '../auth/ChangePasswordModal';
 
 export const EmployeeDashboard: React.FC = () => {
   const { signOut, profile } = useAuth();
@@ -53,6 +55,7 @@ export const EmployeeDashboard: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
 
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -407,6 +410,13 @@ export const EmployeeDashboard: React.FC = () => {
             </div>
           </div>
           <button
+            onClick={() => setIsPasswordModalOpen(true)}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-slate-400 hover:bg-slate-900 hover:text-slate-200 transition cursor-pointer"
+          >
+            <KeyRound className="w-5 h-5" />
+            <span>Change Password</span>
+          </button>
+          <button
             onClick={signOut}
             className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 transition cursor-pointer"
           >
@@ -427,9 +437,14 @@ export const EmployeeDashboard: React.FC = () => {
 
         <header className="md:hidden flex items-center justify-between px-6 py-4 bg-[#0f172a] border-b border-slate-800 shrink-0">
           <span className="text-xl font-black text-white">Spredsheep</span>
-          <button onClick={signOut} className="text-rose-400 p-1">
-            <LogOut className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setIsPasswordModalOpen(true)} className="text-slate-400 p-1" title="Change password">
+              <KeyRound className="w-5 h-5" />
+            </button>
+            <button onClick={signOut} className="text-rose-400 p-1" title="Sign out">
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         {/* MAIN PANEL CONTENT */}
@@ -921,6 +936,8 @@ export const EmployeeDashboard: React.FC = () => {
           <span>Time Off</span>
         </button>
       </footer>
+
+      <ChangePasswordModal open={isPasswordModalOpen} onClose={() => setIsPasswordModalOpen(false)} />
     </div>
   );
 };
